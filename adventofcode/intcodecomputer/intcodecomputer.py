@@ -24,19 +24,21 @@ def run_program(program):
     while 0 <= pc < len(program):
         instruction = program[pc]
         opcode, parameter_modes = _parse_instruction(instruction)
+        parameter_provider = _get_parameter_provider(pc, program, parameter_modes, relative_base)
+        return_value_handler = _get_return_value_handler(pc, program, parameter_modes, relative_base)
         if opcode == 99:  # Halt.
             break
         elif opcode == 3:  # Input.
             value = yield
-            pc = _store(pc, program, parameter_modes, relative_base, value)
+            pc = _store(pc, return_value_handler, value)
         elif opcode == 4:  # Output.
-            pc, output = _disp(pc, program, parameter_modes, relative_base)
+            pc, output = _disp(pc, parameter_provider)
             yield output
         elif opcode == 9:  # Adjust relative base.
-            pc, relative_base = _adjust_relative_base(pc, program, parameter_modes, relative_base)
+            pc, relative_base = _adjust_relative_base(pc, parameter_provider, relative_base)
         else:
             try:
-                pc = opcode_handlers[opcode](pc, program, parameter_modes, relative_base)
+                pc = opcode_handlers[opcode](pc, parameter_provider, return_value_handler)
             except KeyError:
                 print("ERROR: Invalid opcode: {}".format(opcode))
                 break
@@ -52,81 +54,86 @@ def _parse_instruction(instruction):
     return opcode, parameter_modes
 
 
-def _store(pc, program, parameter_modes, relative_base, value):
-    ret = _get_return_address(program[pc + 1], parameter_modes[0], program, relative_base)
-    program[ret] = value
+def _get_parameter_provider(pc, program, parameter_modes, relative_base):
+    def _get_parameter(parameter, mode):
+        if mode == 0:
+            return program[parameter]
+        elif mode == 1:
+            return parameter
+        elif mode == 2:
+            return program[parameter + relative_base]
+        else:
+            print("ERROR: Invalid parameter mode: {}".format(mode))
+
+    return lambda offset: _get_parameter(program[pc + 1 + offset], parameter_modes[offset])
+
+
+def _get_return_value_handler(pc, program, parameter_modes, relative_base):
+    def _get_return_address(parameter, mode):
+        if mode == 0:
+            return parameter
+        elif mode == 2:
+            return parameter + relative_base
+        else:
+            print("ERROR: Invalid return address parameter mode: {}".format(mode))
+
+    def _store_return_value(offset, value):
+        address = _get_return_address(program[pc + 1 + offset], parameter_modes[offset])
+        program[address] = value
+
+    return _store_return_value
+
+
+def _store(pc, return_value_handler, value):
+    return_value_handler(0, value)
     return pc + 2
 
 
-def _disp(pc, program, parameter_modes, relative_base):
-    op = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
+def _disp(pc, parameter_provider):
+    op = parameter_provider(0)
     return pc + 2, op
 
 
-def _adjust_relative_base(pc, program, parameter_modes, relative_base):
-    op = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
+def _adjust_relative_base(pc, parameter_provider, relative_base):
+    op = parameter_provider(0)
     return pc + 2, relative_base + op
 
 
-def _add(pc, program, parameter_modes, relative_base):
-    op1 = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
-    op2 = _get_parameter(program[pc + 2], parameter_modes[1], program, relative_base)
-    ret = _get_return_address(program[pc + 3], parameter_modes[2], program, relative_base)
-    program[ret] = op1 + op2
+def _add(pc, parameter_provider, return_value_handler):
+    op1 = parameter_provider(0)
+    op2 = parameter_provider(1)
+    return_value_handler(2, op1 + op2)
     return pc + 4
 
 
-def _multiply(pc, program, parameter_modes, relative_base):
-    op1 = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
-    op2 = _get_parameter(program[pc + 2], parameter_modes[1], program, relative_base)
-    ret = _get_return_address(program[pc + 3], parameter_modes[2], program, relative_base)
-    program[ret] = op1 * op2
+def _multiply(pc, parameter_provider, return_value_handler):
+    op1 = parameter_provider(0)
+    op2 = parameter_provider(1)
+    return_value_handler(2, op1 * op2)
     return pc + 4
 
 
-def _jump_if_true(pc, program, parameter_modes, relative_base):
-    op1 = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
-    op2 = _get_parameter(program[pc + 2], parameter_modes[1], program, relative_base)
+def _jump_if_true(pc, parameter_provider, return_value_handler):
+    op1 = parameter_provider(0)
+    op2 = parameter_provider(1)
     return op2 if op1 else pc + 3
 
 
-def _jump_if_false(pc, program, parameter_modes, relative_base):
-    op1 = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
-    op2 = _get_parameter(program[pc + 2], parameter_modes[1], program, relative_base)
+def _jump_if_false(pc, parameter_provider, return_value_handler):
+    op1 = parameter_provider(0)
+    op2 = parameter_provider(1)
     return pc + 3 if op1 else op2
 
 
-def _less_than(pc, program, parameter_modes, relative_base):
-    op1 = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
-    op2 = _get_parameter(program[pc + 2], parameter_modes[1], program, relative_base)
-    ret = _get_return_address(program[pc + 3], parameter_modes[2], program, relative_base)
-    program[ret] = 1 if op1 < op2 else 0
+def _less_than(pc, parameter_provider, return_value_handler):
+    op1 = parameter_provider(0)
+    op2 = parameter_provider(1)
+    return_value_handler(2, 1 if op1 < op2 else 0)
     return pc + 4
 
 
-def _equals(pc, program, parameter_modes, relative_base):
-    op1 = _get_parameter(program[pc + 1], parameter_modes[0], program, relative_base)
-    op2 = _get_parameter(program[pc + 2], parameter_modes[1], program, relative_base)
-    ret = _get_return_address(program[pc + 3], parameter_modes[2], program, relative_base)
-    program[ret] = 1 if op1 == op2 else 0
+def _equals(pc, parameter_provider, return_value_handler):
+    op1 = parameter_provider(0)
+    op2 = parameter_provider(1)
+    return_value_handler(2, 1 if op1 == op2 else 0)
     return pc + 4
-
-
-def _get_parameter(parameter, mode, program, relative_base):
-    if mode == 0:
-        return program[parameter]
-    elif mode == 1:
-        return parameter
-    elif mode == 2:
-        return program[parameter + relative_base]
-    else:
-        print("ERROR: Invalid parameter mode: {}".format(mode))
-
-
-def _get_return_address(parameter, mode, program, relative_base):
-    if mode == 0:
-        return parameter
-    elif mode == 2:
-        return parameter + relative_base
-    else:
-        print("ERROR: Invalid parameter mode for return address: {}".format(mode))
