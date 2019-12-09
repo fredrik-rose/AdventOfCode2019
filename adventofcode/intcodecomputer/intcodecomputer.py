@@ -4,6 +4,27 @@ import collections as coll
 MAX_PARAMETERS = 3
 
 
+class IntcodeSegmentationFault(Exception):
+    pass
+
+
+class Memory(list):
+    def __init__(self, content):
+        list.__init__(self, content)
+
+    def __getitem__(self, key):
+        try:
+            return list.__getitem__(self, key)
+        except IndexError:
+            raise IntcodeSegmentationFault("Invalid read access at {} [0-{}]".format(key, len(self) - 1))
+
+    def __setitem__(self, key, value):
+        try:
+            list.__setitem__(self, key, value)
+        except IndexError:
+            raise IntcodeSegmentationFault("Invalid write access at {} [0-{}]".format(key, len(self) - 1))
+
+
 def get_program(file_path):
     memory = coll.defaultdict(int)
     with open(file_path) as f:
@@ -78,6 +99,7 @@ def _get_return_value_handler(pc, program, parameter_modes, relative_base):
             print("ERROR: Invalid return address parameter mode: {}".format(mode))
 
     def _store_return_value(offset, value):
+        # PC position should be the current instruction.
         address = _get_return_address(program[pc + 1 + offset], parameter_modes[offset])
         program[address] = value
 
