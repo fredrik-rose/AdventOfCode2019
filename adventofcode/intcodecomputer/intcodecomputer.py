@@ -33,7 +33,7 @@ def get_program(file_path):
     return memory
 
 
-def run_program(program):
+def run_program(program, request_input=None):
     opcode_handlers = {1: _add,
                        2: _multiply,
                        5: _jump_if_true,
@@ -50,7 +50,10 @@ def run_program(program):
         if opcode == 99:  # Halt.
             break
         elif opcode == 3:  # Input.
-            value = yield
+            if request_input:
+                value = request_input()
+            else:
+                value = yield
             pc = _store(pc, return_value_handler, value)
         elif opcode == 4:  # Output.
             pc, output = _disp(pc, parameter_provider)
