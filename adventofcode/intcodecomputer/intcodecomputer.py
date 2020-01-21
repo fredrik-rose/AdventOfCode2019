@@ -33,6 +33,29 @@ def get_program(file_path):
     return memory
 
 
+def run_ascii(program, script):
+    computer = run_program(program, _get_input_provider(script))
+    for output in computer:
+        try:
+            print(chr(output), end='')
+        except (UnicodeEncodeError, ValueError):
+            # Terminate when a non ASCII character is received.
+            return output
+
+
+def _get_input_provider(script):
+    def input_generator():
+        for instruction in script:
+            for c in instruction:
+                yield ord(c)
+
+    def provider():
+        return next(generator)
+
+    generator = input_generator()
+    return provider
+
+
 def run_program(program, request_input=None):
     opcode_handlers = {1: _add,
                        2: _multiply,
